@@ -1,0 +1,19 @@
+[package]
+name = "axum_practice"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.66"
+async-graphql = "4.0.16"
+async-graphql-axum = "4.0.16"
+axum = {version = "0.5.1", features = ["headers", "macros"]}
+hyper = "0.14.23"
+pyo3 = "0.17.3"
+pyo3-asyncio = { version = "0.17.0", features = ["attributes", "tokio-runtime"] }
+rug = "1.18.0"
+tokio = {version = "1.22.0", features = ["full"]}
+tower = {version = "0.4.13", features = ["full"]}
+
