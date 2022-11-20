@@ -1,6 +1,9 @@
 mod factorial;
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Ok, Result};
 use async_graphql::{
@@ -12,8 +15,11 @@ use axum::{
     routing::get,
     Extension, Json, Router,
 };
+use bb8_redis::RedisConnectionManager;
 use factorial::{async_operation, calculate_factorial, calculate_factorial_py};
 use pyo3::{PyResult, Python};
+use redis::AsyncCommands;
+use tokio::sync::Mutex;
 
 #[derive(Default)]
 struct GenericQueryRoot;
@@ -73,12 +79,32 @@ async fn rust_sleep() -> &'static str {
     "Success"
 }
 
+async fn get_from_redis(connection: Extension<Arc<Mutex<redis::aio::Connection>>>) -> String {
+    let val: String = connection.lock().await.get("Testing Key").await.unwrap();
+    val
+}
+
+async fn get_from_redis_pool(
+    pool: Extension<bb8_redis::bb8::Pool<RedisConnectionManager>>,
+) -> String {
+    let mut conn = pool.get().await.unwrap();
+    let val: String = conn.get("Testing Key").await.unwrap();
+    val
+}
+
 #[pyo3_asyncio::tokio::main(flavor = "multi_thread")]
 async fn main() -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
+    let client = redis::Client::open("redis://:@0.0.0.0:6379/3").unwrap();
+    let connection = client.get_async_connection().await.unwrap();
     let schema: TestingSchema =
         Schema::build(QueryRoot::default(), EmptyMutation, EmptySubscription).finish();
     let locals = Python::with_gil(pyo3_asyncio::tokio::get_current_locals)?;
+    let manager = RedisConnectionManager::new("redis://:@0.0.0.0:6379/3").unwrap();
+    let pool = bb8_redis::bb8::Pool::builder()
+        .build(manager)
+        .await
+        .unwrap();
     let app = Router::new()
         .route("/graphql", get(graphql_playground).post(graphql_handler))
         .route(
@@ -86,7 +112,11 @@ async fn main() -> PyResult<()> {
             get(move || pyo3_asyncio::tokio::scope(locals.clone(), sleep())),
         )
         .route("/rust_sleep", get(rust_sleep))
-        .layer(Extension(schema));
+        .route("/redis_get", get(get_from_redis))
+        .route("/redis_pool_get", get(get_from_redis_pool))
+        .layer(Extension(schema))
+        .layer(Extension(pool))
+        .layer(Extension(Arc::new(Mutex::new(connection))));
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())

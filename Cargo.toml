@@ -10,9 +10,11 @@ anyhow = "1.0.66"
 async-graphql = "4.0.16"
 async-graphql-axum = "4.0.16"
 axum = {version = "0.5.1", features = ["headers", "macros"]}
+bb8-redis = "0.12.0"
 hyper = "0.14.23"
 pyo3 = "0.17.3"
 pyo3-asyncio = { version = "0.17.0", features = ["attributes", "tokio-runtime"] }
+redis = { version = "0.22.1", features = ["tokio-comp"] }
 rug = "1.18.0"
 tokio = {version = "1.22.0", features = ["full"]}
 tower = {version = "0.4.13", features = ["full"]}
