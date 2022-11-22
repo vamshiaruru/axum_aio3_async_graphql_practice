@@ -14,8 +14,12 @@ bb8-redis = "0.12.0"
 hyper = "0.14.23"
 pyo3 = "0.17.3"
 pyo3-asyncio = { version = "0.17.0", features = ["attributes", "tokio-runtime"] }
+rand = "0.8.5"
 redis = { version = "0.22.1", features = ["tokio-comp"] }
 rug = "1.18.0"
+sea-orm = {version = "0.10.3", features = ["sqlx-postgres", "runtime-tokio-native-tls", "mock"]}
+serde = "1.0.147"
+serde_json = "1.0.88"
 tokio = {version = "1.22.0", features = ["full"]}
 tower = {version = "0.4.13", features = ["full"]}
 
