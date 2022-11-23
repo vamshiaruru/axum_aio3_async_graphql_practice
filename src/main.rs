@@ -16,7 +16,10 @@ use axum::{
     Extension, Router,
 };
 use bb8_redis::RedisConnectionManager;
-use entities::page::{self};
+use entities::{
+    page::{self},
+    page_with_requirements,
+};
 use factorial::{async_operation, calculate_factorial, calculate_factorial_py};
 use pyo3::{PyResult, Python};
 use rand::Rng;
@@ -33,6 +36,11 @@ struct GenericQueryRoot;
 #[derive(FromQueryResult, Debug, Serialize, Deserialize)]
 struct PageSlug {
     slug: String,
+}
+
+#[derive(FromQueryResult, Debug, Serialize, Deserialize)]
+struct IdFromMv {
+    id: i32,
 }
 
 #[Object]
@@ -71,6 +79,27 @@ impl GenericQueryRoot {
         let val: String = conn.get(format!("slug_{num}")).await?;
         let data: page::Model = serde_json::from_str(&val)?;
         anyhow::Ok(data)
+    }
+
+    async fn page_from_mv(&self, ctx: &Context<'_>) -> anyhow::Result<i32> {
+        let db = ctx.data::<DatabaseConnection>().unwrap();
+        // let mut query = Query::select()
+        //     .column(page_with_requirements::Column::Id)
+        //     .from(page_with_requirements::Entity)
+        //     .limit(1);
+        // let builder = db.get_database_backend();
+        // let res = IdFromMv::find_by_statement(query).one(&db).await?;
+
+        let res = page_with_requirements::Entity::find()
+            .select_only()
+            .column(page_with_requirements::Column::Id)
+            .limit(10)
+            .into_model::<IdFromMv>()
+            .all(db)
+            .await?;
+        println!("{res:?}");
+        // let val = res.ok_or_else(|| anyhow::Error::msg("No row found"))?;
+        anyhow::Ok(res[5].id)
     }
 
     async fn page_from_query(&self, ctx: &Context<'_>, id: i32) -> anyhow::Result<page::Model> {
@@ -165,11 +194,10 @@ async fn get_from_postgres(db: Extension<Arc<Mutex<DatabaseConnection>>>) -> Str
 }
 
 async fn _get_from_postgres(
-    db: Extension<Arc<Mutex<DatabaseConnection>>>,
+    Extension(ref db): Extension<DatabaseConnection>,
 ) -> anyhow::Result<Option<i32>> {
     let num = rand::thread_rng().gen_range(1..100000);
-    let conn = db.lock().await;
-    let data = entities::prelude::Page::find_by_id(num).one(&*conn).await?;
+    let data = entities::prelude::Page::find_by_id(num).one(db).await?;
     if let Some(model) = data {
         return anyhow::Ok(Some(model.id));
     }
@@ -181,7 +209,7 @@ async fn main() -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
 
     // postgres
-    let db = Database::connect("postgres://saleor:saleor@localhost:5432/saleor_fresh")
+    let db = Database::connect("postgres://saleor:saleor@localhost:5432/alexandria")
         .await
         .unwrap();
 
@@ -197,7 +225,7 @@ async fn main() -> PyResult<()> {
     // Graphql
     let schema: TestingSchema =
         Schema::build(QueryRoot::default(), EmptyMutation, EmptySubscription)
-            .data(db)
+            .data(db.clone())
             .data(pool.clone())
             .finish();
 
@@ -217,8 +245,8 @@ async fn main() -> PyResult<()> {
         .route("/get_from_postgres", get(get_from_postgres))
         .layer(Extension(schema))
         .layer(Extension(pool))
-        .layer(Extension(Arc::new(Mutex::new(connection))));
-    // .layer(Extension(Arc::new(Mutex::new(db))));
+        .layer(Extension(Arc::new(Mutex::new(connection))))
+        .layer(Extension(db));
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
